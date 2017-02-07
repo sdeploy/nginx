@@ -1,0 +1,213 @@
+#!/bin/bash
+
+cmd=$1
+if [ $cmd"x" = "x" ];then
+	echo "Usage: ng {start|stop|restart|test|status | 1|0|2|t|s}"
+	exit 2
+fi
+
+# 定位真实路径
+exec_bin=$0
+if [ `ls -l $exec_bin | grep '\-> ' -c` == 1 ];then
+	exec_bin=`ls -l $exec_bin | awk -F'-> ' '{print $2}'`
+	if [ `ls -l $exec_bin | grep '\-> ' -c` == 1 ];then
+		exec_bin=`ls -l $exec_bin | awk -F'-> ' '{print $2}'`
+	fi
+fi
+SERVER_ROOT=`dirname $exec_bin`
+SERVER_ROOT=`dirname $SERVER_ROOT`
+
+# 检测nginx可执行文件
+SERVER_BIN=nginx
+SER_CONF_PATH="/etc/nginx/"
+if [ -e "/opt/app/nginx/sbin/nginx" ];then
+	SERVER_BIN="/opt/app/nginx/sbin/nginx"
+	SER_CONF_PATH="/opt/app/nginx/conf/"
+elif [ -e "/usr/sbin/nginx" ];then
+	SERVER_BIN="/usr/sbin/nginx"
+	SER_CONF_PATH="/etc/nginx/"
+elif [ -e "/usr/local/sbin/nginx" ];then
+	SERVER_BIN="/usr/local/sbin/nginx"
+	SER_CONF_PATH="/usr/local/etc/nginx/"
+elif [ -e "/usr/local/bin/nginx" ];then
+	SERVER_BIN="/usr/local/bin/nginx"
+	SER_CONF_PATH="/usr/local/etc/nginx/"
+elif [ -e "/usr/local/nginx/sbin" ];then
+	SERVER_BIN="/usr/local/nginx/sbin/nginx"
+	SER_CONF_PATH="/usr/local/nginx/conf/"
+fi
+
+echo -n -e "[\033[35m$SERVER_BIN\033[0m]	"
+$SERVER_BIN -v 2>&1
+
+# 检查相关的文件或目录
+mkdir -p $SERVER_ROOT/logs
+mkdir -p $SERVER_ROOT/apps
+mkdir -p $SERVER_ROOT/ext
+mv -f $SERVER_ROOT/.conf /tmp/ 2>/dev/null
+mkdir -p $SERVER_ROOT/.conf/main
+mkdir -p $SERVER_ROOT/.conf/http
+mkdir -p $SERVER_ROOT/.conf/shell
+mkdir -p $SERVER_ROOT/.conf/apps
+
+# 查找主配置文件
+if [ -e "$SERVER_ROOT/conf/nginx.conf" ];then
+	conf_file="$SERVER_ROOT/conf/nginx.conf"
+else
+	conf_file="$SERVER_ROOT/conf/_nginx.conf"
+fi
+options="-p $SERVER_ROOT -c $SERVER_ROOT/.conf/nginx.conf"
+
+# 替换内容
+replace()
+{
+	src_file=$1
+	dst_file=$2
+	cp -f $src_file $dst_file
+	if [ -f $src_file.replace ];then
+		grep -v '^\s*#' $src_file.replace | grep '\t' | sed -E 's#[[:cntrl:]]+#x x x x#' | while read -r line
+		do
+			key2=`echo $line | awk -F'x x x x' '{print $1}'`
+			key1=`echo $key2 | sed 's#\.#\\\.#g'`
+			value=`echo $line | awk -F'x x x x' '{print $2}'`
+			if [ ${key2%% *} = ${value%% *} ];then
+				sed -i "" -E "s#${key1}#${value}#" $dst_file
+			else
+				sed -i "" -E "s#^([[:blank:]]*)${key1}([[:blank:]]+).*\$#\\1${key1}\\2${value}#" $dst_file
+			fi
+		done
+	fi
+}
+
+# 处理 mime.types、fastcgi_params
+if [ -e "$SERVER_ROOT/conf/mime.types" ];then
+	cp -f $SERVER_ROOT/conf/mime.types $SERVER_ROOT/.conf/
+else
+	cp -f $SER_CONF_PATH/mime.types $SERVER_ROOT/.conf/
+fi
+
+# 处理主配置文件
+TMP_FILE="$SERVER_ROOT/.conf/.tmp"
+replace $conf_file $TMP_FILE
+if [ `grep -c '^\s*shell\.' $TMP_FILE` != 0 ];then
+	grep '^\s*shell\.' $TMP_FILE | sed "s#shell\.##" | sed "s#logs/#$SERVER_ROOT/logs/#" > $SERVER_ROOT/.conf/shell/nginx.conf
+fi
+grep -v '^\s*shell\.' $TMP_FILE | sed "s#logs/#$SERVER_ROOT/logs/#" | sed "s#ext/\*\.conf#$SERVER_ROOT/.conf/http/*.conf#" | sed "s#apps/\*\.conf#$SERVER_ROOT/.conf/apps/*.conf#" > $SERVER_ROOT/.conf/nginx.conf
+echo "include	$SERVER_ROOT/.conf/main/*.conf;" >> $SERVER_ROOT/.conf/nginx.conf
+
+# 处理扩展配置
+for file in `ls $SERVER_ROOT/ext/*.conf`
+do
+	replace $file $TMP_FILE
+	if [ `grep -c '^\s*main\.' $TMP_FILE` != 0 ];then
+		grep '^\s*main\.' $TMP_FILE | sed "s#main\.##" | sed "s#logs/#$SERVER_ROOT/logs/#" > `echo $file | sed "s#ext/#.conf/main/ext_#"`
+	fi
+	if [ `grep -c '^\s*shell\.' $TMP_FILE` != 0 ];then
+		grep '^\s*shell\.' $TMP_FILE | sed "s#shell\.##" | sed "s#logs/#$SERVER_ROOT/logs/#" > `echo $file | sed "s#ext/#.conf/shell/ext_#"`
+	fi
+	grep -v '^\s*main\.' $TMP_FILE | grep -v '^\s*shell\.' | sed "s#http\.##" | sed "s#logs/#$SERVER_ROOT/logs/#" > `echo $file | sed "s#ext/#.conf/http/ext_#"`
+done
+
+# 处理应用配置
+for file in `ls $SERVER_ROOT/apps/*.conf`
+do
+	replace $file $TMP_FILE
+	if [ `grep -c '^\s*main\.' $TMP_FILE` != 0 ];then
+		grep '^\s*main\.' $TMP_FILE | sed "s#main\.##" | sed "s#logs/#$SERVER_ROOT/logs/#" > `echo $file | sed "s#apps/#.conf/main/app_#"`
+	fi
+	if [ `grep -c '^\s*http\.' $TMP_FILE` != 0 ];then
+		grep '^\s*http\.' $TMP_FILE | sed "s#http\.##" | sed "s#logs/#$SERVER_ROOT/logs/#" > `echo $file | sed "s#apps/#.conf/http/app_#"`
+	fi
+	if [ `grep -c '^\s*shell\.' $TMP_FILE` != 0 ];then
+		grep '^\s*shell\.' $TMP_FILE | sed "s#shell\.##" | sed "s#logs/#$SERVER_ROOT/logs/#" > `echo $file | sed "s#apps/#.conf/shell/app_#"`
+	fi
+	grep -v '^\s*main\.' $TMP_FILE | grep -v '^\s*http\.' | grep -v '^\s*shell\.' | sed "s#logs/#$SERVER_ROOT/logs/#" > `echo $file | sed "s#apps/#.conf/apps/#"`
+done
+
+# 执行脚本
+for file in `ls $SERVER_ROOT/.conf/shell/*.conf`
+do
+	source $file
+done
+
+start()
+{
+	echo "Starting nginx ..."
+	$SERVER_BIN $options
+	echo "Started nginx [OK]"
+	status
+}
+
+restart()
+{
+	echo "Restarting nginx ..."
+	$SERVER_BIN $options -s reload
+	echo "Restarted nginx [OK]"
+	status
+}
+
+stop()
+{
+	echo "Stopping nginx ..."
+	$SERVER_BIN $options -s stop
+	echo "Stopped nginx [OK]"
+	status
+}
+
+test()
+{
+	$SERVER_BIN $options -t
+}
+
+status()
+{
+	echo "[`ps ax | grep nginx | grep process | grep -v grep | wc -l | awk '{print $1}'` Threads]"
+	ps ax | grep nginx | grep process | grep -v grep
+}
+
+
+case "$1" in
+	start)
+		start
+		;;
+	1)
+		start
+		;;
+
+	reload)
+		restart
+		;;
+	restart)
+		restart
+		;;
+	2)
+		restart
+		;;
+
+	stop)
+		stop
+		;;
+	0)
+		stop
+		;;
+
+	test)
+		test
+		;;
+	t)
+		test
+		;;
+
+	status)
+		status
+		;;
+	s)
+		status
+		;;
+
+	*)
+
+	exit 2
+esac
+echo ""
+
