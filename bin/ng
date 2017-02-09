@@ -70,10 +70,18 @@ replace()
 			key2=`echo $line | awk -F'x x x x' '{print $1}'`
 			key1=`echo $key2 | sed 's#\.#\\\.#g'`
 			value=`echo $line | awk -F'x x x x' '{print $2}'`
-			if [ ${key2%% *} = ${value%% *} ];then
-				sed -i "" -E "s#${key1}#${value}#" $dst_file
+			if [ "${key2%% *}" = "${value%% *}" ];then
+				if [ `uname` = 'Darwin' ];then
+					sed -i "" -E "s#${key1}#${value}#" $dst_file
+				else
+					sed -i -E "s#${key1}#${value}#" $dst_file
+				fi
 			else
-				sed -i "" -E "s#^([[:blank:]]*)${key1}([[:blank:]]+).*\$#\\1${key1}\\2${value}#" $dst_file
+				if [ `uname` = 'Darwin' ];then
+					sed -i "" -E "s#^([[:blank:]]*)${key1}([[:blank:]]+).*\$#\\1${key1}\\2${value}#" $dst_file
+				else
+					sed -i -E "s#^([[:blank:]]*)${key1}([[:blank:]]+).*\$#\\1${key1}\\2${value}#" $dst_file
+				fi
 			fi
 		done
 	fi

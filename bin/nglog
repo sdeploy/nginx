@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# 定位真实路径
+exec_bin=$0
+if [ `ls -l $exec_bin | grep '\-> ' -c` == 1 ];then
+	exec_bin=`ls -l $exec_bin | awk -F'-> ' '{print $2}'`
+	if [ `ls -l $exec_bin | grep '\-> ' -c` == 1 ];then
+		exec_bin=`ls -l $exec_bin | awk -F'-> ' '{print $2}'`
+	fi
+fi
+SERVER_ROOT=`dirname $exec_bin`
+SERVER_ROOT=`dirname $SERVER_ROOT`
+
+show_log()
+{
+	if [ -f "$SERVER_ROOT/logs/$1.log" ];then
+		tail -n$2 -f $SERVER_ROOT/logs/$1.log
+	else
+		tail -n$2 -f $SERVER_ROOT/logs/$1*.log
+	fi
+}
+
+
+name=$1
+num=$2
+if [ $num"x" = "x" ];then
+	num=10
+fi
+
+if [ $name"x" != "x" ];then
+	show_log $name $num
+	exit
+fi
+
+ls $SERVER_ROOT/logs/ | grep '.log' | sed 's/\.log//' | while read name
+do
+	echo -e "  \033[36m$name\033[0m"
+done
+
+echo -ne "请选择要显示的日志 [\033[36merror\033[0m]: "
+read name
+
+if [ $name"x" = "x" ];then
+	name="error"
+fi
+
+show_log $name $num
