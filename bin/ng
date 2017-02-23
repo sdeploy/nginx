@@ -93,6 +93,11 @@ if [ -e "$SERVER_ROOT/conf/mime.types" ];then
 else
 	cp -f $SER_CONF_PATH/mime.types $SERVER_ROOT/.conf/
 fi
+if [ -e "$SERVER_ROOT/conf/fastcgi_params" ];then
+	cp -f $SERVER_ROOT/conf/fastcgi_params $SERVER_ROOT/.conf/
+else
+	cp -f $SER_CONF_PATH/fastcgi_params $SERVER_ROOT/.conf/
+fi
 
 # 处理主配置文件
 TMP_FILE="$SERVER_ROOT/.conf/.tmp"
