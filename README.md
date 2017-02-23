@@ -20,3 +20,8 @@ will make /opt/nginx
 /usr/local/bin/nginx
 /usr/local/nginx/sbin
 ```
+
+# Usage:
+```
+ng {start|stop|restart|test|status | 1|0|2|t|s}
+```
