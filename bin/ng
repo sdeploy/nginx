@@ -109,7 +109,7 @@ grep -v '^\s*shell\.' $TMP_FILE | sed "s#logs/#$SERVER_ROOT/logs/#" | sed "s#ext
 echo "include	$SERVER_ROOT/.conf/main/*.conf;" >> $SERVER_ROOT/.conf/nginx.conf
 
 # 处理扩展配置
-for file in `ls $SERVER_ROOT/ext/*.conf`
+for file in `ls $SERVER_ROOT/ext/*.conf 2>/dev/null`
 do
 	replace $file $TMP_FILE
 	if [ `grep -c '^\s*main\.' $TMP_FILE` != 0 ];then
@@ -122,7 +122,7 @@ do
 done
 
 # 处理应用配置
-for file in `ls $SERVER_ROOT/apps/*.conf`
+for file in `ls $SERVER_ROOT/apps/*.conf 2>/dev/null`
 do
 	replace $file $TMP_FILE
 	if [ `grep -c '^\s*main\.' $TMP_FILE` != 0 ];then
@@ -138,10 +138,16 @@ do
 done
 
 # 执行脚本
-for file in `ls $SERVER_ROOT/.conf/shell/*.conf`
+for file in `ls $SERVER_ROOT/.conf/shell/*.conf 2>/dev/null`
 do
 	source $file
 done
+
+# 执行脚本
+if [ -e "$SERVER_ROOT/conf/init.sh" ];then
+	replace $SERVER_ROOT/conf/init.sh $SERVER_ROOT/.conf/init.sh
+	source $SERVER_ROOT/.conf/init.sh
+fi
 
 start()
 {
@@ -149,6 +155,12 @@ start()
 	$SERVER_BIN $options
 	echo "Started nginx [OK]"
 	status
+
+	# 执行脚本
+	if [ -e "$SERVER_ROOT/conf/start.sh" ];then
+		replace $SERVER_ROOT/conf/start.sh $SERVER_ROOT/.conf/start.sh
+		source $SERVER_ROOT/.conf/start.sh
+	fi
 }
 
 restart()
@@ -162,6 +174,12 @@ restart()
 stop()
 {
 	echo "Stopping nginx ..."
+	# 执行脚本
+	if [ -e "$SERVER_ROOT/conf/stop.sh" ];then
+		replace $SERVER_ROOT/conf/stop.sh $SERVER_ROOT/.conf/stop.sh
+		source $SERVER_ROOT/.conf/stop.sh
+	fi
+
 	$SERVER_BIN $options -s stop
 	echo "Stopped nginx [OK]"
 	status
